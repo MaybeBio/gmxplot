@@ -26,7 +26,7 @@
 ### From source
 
 ```bash
-git clone <repository-url> gmxplot
+git clone https://github.com/MaybeBio/gmxplot.git
 cd gmxplot
 pip install -e .
 ```
