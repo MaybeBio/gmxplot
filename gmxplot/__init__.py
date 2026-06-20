@@ -1,0 +1,3 @@
+"""gmxplot - GROMACS XVG file visualization tool."""
+
+__version__ = "0.1.0"
