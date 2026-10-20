@@ -1,0 +1,25 @@
+# This file was created by gmxplot examples (synthetic data)
+@ title "Eigenvalues of the covariance matrix"
+@ xaxis label "Eigenvector index"
+@ yaxis label "eigenvalue (nm\S2\N)"
+@ s0 legend "Eigenvalue"
+1 1.6083
+2 1.1985
+3 0.9346
+4 0.7621
+5 0.5624
+6 0.4678
+7 0.3871
+8 0.2797
+9 0.2015
+10 0.1279
+11 0.1000
+12 0.1002
+13 0.0591
+14 0.0610
+15 0.0071
+16 0.0375
+17 0.0515
+18 0.0250
+19 0.0050
+20 0.0173

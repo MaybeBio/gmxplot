@@ -1,0 +1,36 @@
+{
+  "title": "Equilibration & stability overview",
+  "cols": 2,
+  "figsize": [14, 10],
+  "t_eq": 50,
+  "panels": [
+    {
+      "files": ["examples/data/rmsd_r1.xvg", "examples/data/rmsd_r2.xvg", "examples/data/rmsd_r3.xvg"],
+      "labels": ["r1", "r2", "r3"],
+      "title": "Backbone RMSD",
+      "band": "sd",
+      "roll_window": 5,
+      "ylim": [0.15, 0.6]
+    },
+    {
+      "files": ["examples/data/gyrate_r1.xvg", "examples/data/gyrate_r2.xvg", "examples/data/gyrate_r3.xvg"],
+      "labels": ["r1", "r2", "r3"],
+      "title": "Radius of gyration",
+      "band": "sd",
+      "roll_window": 5,
+      "ylim": [1.6, 2.0]
+    },
+    {
+      "files": ["examples/data/hbnum_r1.xvg", "examples/data/hbnum_r2.xvg", "examples/data/hbnum_r3.xvg"],
+      "labels": ["r1", "r2", "r3"],
+      "title": "Protein-DNA H-bonds",
+      "band": "sd",
+      "roll_window": 5
+    },
+    {
+      "file": "examples/data/eigenvalue.xvg",
+      "title": "Eigenvalue spectrum",
+      "ylog": true
+    }
+  ]
+}

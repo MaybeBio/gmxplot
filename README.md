@@ -1,6 +1,73 @@
-# gmxplot — GROMACS XVG File Visualization & Statistics Tool
+<div align="center">
 
-**Auto-detect, plot, compare, aggregate, and summarize GROMACS XVG output from the command line.**
+<img src="./figs/logo.png" alt="gmxplot logo" width="140" />
+
+# gmxplot
+
+**A GROMACS XVG visualization & statistics tool with type-aware semantics.**
+
+<p>
+Auto-detect, plot, compare, aggregate, and summarize GROMACS <code>.xvg</code>
+output from the command line. Every file is classified by <em>what the data
+is</em> (<code>family</code>) and <em>how it should be rendered and analyzed</em>
+(<code>kind</code>), so histograms are never smoothed and time series get
+physical units, equilibrated windows, and rigorous error bars.
+</p>
+
+![Multi-panel dashboard assembled from a JSON manifest](./figs/dashboard.png)
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python&logoColor=white)](#installation)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat)](http://makeapullrequest.com)
+[![CLI Commands](https://img.shields.io/badge/Commands-8-0366d6)](#-commands)
+[![Data Kinds](https://img.shields.io/badge/Kinds-8-f59e0b)](#-concepts-family-vs-kind)
+
+<p>
+  <a href="#-installation">Installation</a> ·
+  <a href="#-quick-start">Quick Start</a> ·
+  <a href="#-commands">Commands</a> ·
+  <a href="#-plot-kinds">Plot Kinds</a> ·
+  <a href="#-shared-style-options">Style Options</a> ·
+  <a href="#-statistics">Statistics</a> ·
+  <a href="#-reproduce-the-examples">Examples</a>
+</p>
+
+</div>
+
+> **If this project helps you, please consider giving it a Star ⭐. Thank you!**
+
+---
+
+## Index
+
+- [gmxplot](#gmxplot)
+  - [📖 Overview](#-overview)
+  - [🚀 Features](#-features)
+  - [📦 Installation](#-installation)
+  - [⚡ Quick Start](#-quick-start)
+  - [🧠 Concepts: family vs kind](#-concepts-family-vs-kind)
+  - [🛠️ Commands](#️-commands)
+    - [`detect`](#-detect-file)
+    - [`plot`](#-plot-file)
+    - [`compare` / `multi-compare`](#-compare-file1-file2--multi-compare-files)
+    - [`replicas`](#-replicas-files)
+    - [`stats`](#-stats-files)
+    - [`dashboard`](#-dashboard-manifest)
+    - [`batch`](#-batch-input_dir)
+  - [🎨 Plot Kinds](#-plot-kinds)
+  - [🕐 Time Axis & Windowing](#-time-axis--windowing)
+  - [🌊 Smoothing](#-smoothing)
+  - [📊 Statistics](#-statistics)
+  - [🧬 Replica Aggregation](#-replica-aggregation)
+  - [🧩 Dashboard Manifest](#-dashboard-manifest)
+  - [🎛️ Shared Style Options](#️-shared-style-options)
+  - [🔁 Reproduce the Examples](#-reproduce-the-examples)
+  - [🏗️ Architecture](#️-architecture)
+  - [📄 License](#-license)
+
+---
+
+## 📖 Overview
 
 `gmxplot` reads GROMACS XVG files, classifies each one by *what the data is*
 (`family`) and *how it should be rendered and analyzed* (`kind`), then produces
@@ -9,21 +76,25 @@ physical time axes, applies configurable windows and smoothing, aggregates
 independent replicas into a mean±band figure, and assembles heterogeneous XVG
 files into a single dashboard from a JSON manifest.
 
----
+The classification is what makes the tool trustworthy: a **hydrogen-bond
+distance histogram** is drawn as a step plot with *no* rolling average, an
+**eigenvalue spectrum** is a marker plot (optionally log-scaled), and **cluster
+sizes** are bars — while a **time series** (RMSD, Rg, energy, …) gets a rolling
+average and drift statistics. Nothing is smoothed by accident.
 
-## Features
+## 🚀 Features
 
 - **Two-level classification** — `family` (energy, rmsd, hbond_dist, …) is
   decoupled from `kind` (timeseries, histogram, spectrum, bar, profile, pca,
   scatter, xy). Rolling averages and drift statistics apply *only* to
-  `timeseries`, never to histograms, eigenvalue spectra, or cluster-size bars.
+  `timeseries`.
 - **Physical time axes** — `Time (ps|ns|us|fs)` is detected and normalized to ns;
   `--start/--end/--t-eq` and `--roll-window` are expressed in physical units.
 - **Configurable windows** — statistics are computed on a `[start, end]` window;
   `--plot-full` shows the full trajectory with the out-of-window region shaded.
 - **Rigorous statistics** — naive and block-averaged SEM, half-window drift test,
   count-weighted histogram statistics, and correct PCA (both PCs analyzed).
-- **Replica aggregation** — faint per-replica lines + mean with a SD/SEM band,
+- **Replica aggregation** — faint per-replica lines + mean with an SD/SEM band,
   with union/first/intersection alignment and long/summary CSV export.
 - **JSON dashboard** — assemble any mix of single-file and replica panels into one
   figure with shared time axes, `t_eq` lines, and panel labels.
@@ -32,7 +103,7 @@ files into a single dashboard from a JSON manifest.
 
 ---
 
-## Installation
+## 📦 Installation
 
 ```bash
 git clone https://github.com/MaybeBio/gmxplot.git
@@ -44,7 +115,7 @@ Requirements: Python ≥ 3.10, numpy, pandas, matplotlib, seaborn, typer, rich.
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
 ```bash
 # Inspect how a file is classified
@@ -69,121 +140,237 @@ gmxplot dashboard manifest.json -o overview.pdf --stats-csv panel_stats.csv
 
 ---
 
-## Concepts: `family` vs `kind`
+## 🧠 Concepts: family vs kind
 
-- **`family`** — the *semantic content* of the file:
-  `energy`, `rmsd`, `rmsf`, `gyration`, `sasa`, `pca`, `hbond_num`,
-  `hbond_dist`, `mindist`, `contacts`, `eigenvalue`, `cluster_size`, `dssp`,
-  `generic`, `unknown`.
-- **`kind`** — the *rendering / statistics semantics*:
+Two orthogonal ideas replace the old single `plot_type`:
 
-  | kind | meaning | smoothing | drift |
-  |------|---------|-----------|-------|
-  | `timeseries` | ordered time series | yes | yes |
-  | `profile` | per-residue / per-atom profile | no | no |
-  | `histogram` | bin coordinate + counts | no | no (weighted x-stats) |
-  | `spectrum` | eigenvalue / index vs intensity | no | no |
-  | `bar` | discrete categories / cluster sizes | no | no |
-  | `pca` | PC1–PC2 scatter / hexbin | no | no |
-  | `scatter` | unordered x–y scatter | no | no |
-  | `xy` | ordered non-time line | no | no |
+- **`family`** — the *semantic content* of the file: what the numbers mean.
+- **`kind`** — the *rendering / statistics semantics*: how it should be drawn and
+  what statistics are valid.
 
-- **Smoothing** is only offered to `timeseries`; requesting it on another kind is
-  silently ignored (those kinds never smooth).
+| `family` | meaning |
+|---|---|
+| `energy` | energies, temperature, pressure, density (multi-column) |
+| `rmsd` / `rmsf` | deviation / per-residue fluctuation |
+| `gyration` | radius of gyration (`Rg` and components) |
+| `sasa` | solvent-accessible surface (time series or per-residue) |
+| `pca` | principal-component projection |
+| `hbond_num` / `hbond_dist` | hydrogen-bond count / distance distribution |
+| `mindist` / `contacts` | minimum distance / contact count |
+| `eigenvalue` | covariance eigenvalue spectrum |
+| `cluster_size` | cluster-size distribution |
+| `dssp` | secondary-structure content |
+| `generic` / `unknown` | anything else |
 
-`--type` overrides `family`; `--kind` overrides `kind`. Precedence:
-`--kind` > kind implied by `--type` > automatic detection. Both appear in
-`gmxplot detect`.
+| `kind` | meaning | smoothing | drift |
+|------|---------|-----------|-------|
+| `timeseries` | ordered time series | yes | yes |
+| `profile` | per-residue / per-atom profile | no | no |
+| `histogram` | bin coordinate + counts | no | no (weighted x-stats) |
+| `spectrum` | eigenvalue / index vs intensity | no | no |
+| `bar` | discrete categories / cluster sizes | no | no |
+| `pca` | PC1–PC2 scatter / hexbin | no | no |
+| `scatter` | unordered x–y scatter | no | no |
+| `xy` | ordered non-time line | no | no |
+
+**Smoothing is only offered to `timeseries`**; requesting it on any other kind is
+silently ignored (those kinds never smooth).
+
+Overrides and precedence: `--kind` > `--type`-implied kind > automatic detection.
+`--type` sets `family`, `--kind` sets `kind`. Both appear in `gmxplot detect`.
 
 ---
 
-## CLI Reference
+## 🛠️ Commands
 
-### `gmxplot detect FILE`
+| command | purpose |
+|---|---|
+| [`detect`](#-detect-file) | print family / kind / columns / units without plotting |
+| [`plot`](#-plot-file) | render one file with automatic detection |
+| [`compare`](#-compare-file1-file2--multi-compare-files) | overlay two files |
+| [`multi-compare`](#-compare-file1-file2--multi-compare-files) | overlay 3+ files |
+| [`replicas`](#-replicas-files) | aggregate 2+ replicas into mean ± band |
+| [`stats`](#-stats-files) | write a statistics CSV |
+| [`dashboard`](#-dashboard-manifest) | render a multi-panel JSON manifest |
+| [`batch`](#-batch-input_dir) | plot every XVG in a directory |
+
+### 🔍 `detect FILE`
 
 Print the resolved family, kind, columns, time unit, and primary y columns.
 
 ```
 gmxplot detect rmsd.xvg
+  File: rmsd.xvg
   Family: rmsd
   Kind:   timeseries
-  X column: Time     X is time: True    Time unit: ns
+  X column: Time   X is time: True   Time unit: ns
   Y columns: RMSD
 ```
 
-### `gmxplot plot FILE`
+### 📈 `plot FILE`
 
-Key options: `--kind`, `--type`, `--x-col`, `--y-col` (repeatable), `--all-cols`,
-`--start`, `--end`, `--t-eq`, `--plot-full`, `--time-unit {auto,ps,ns,us,fs}`,
-`--no-time-normalize`, `--roll-samples N` / `--roll-avg N` / `--roll-window T` /
-`--roll-fraction F`, `--no-roll`, `--no-raw`, `--mean`, `--std`, `--csv`, and the
-shared style options below.
+Render a single XVG file.
+
+**Key options**
+
+- `-o/--output` — output path (PNG, PDF, SVG, EPS, JPG, TIFF).
+- `--kind`, `--type` — override rendering kind / data family.
+- `--x-col`, `--y-col` (repeatable), `--all-cols` — column selection.
+- `--start`, `--end`, `--t-eq`, `--plot-full` — statistics window + shading.
+- `--time-unit {auto,ps,ns,us,fs}`, `--no-time-normalize`.
+- `--roll-samples N` / `--roll-avg N` / `--roll-window T` / `--roll-fraction F` /
+  `--no-roll` / `--no-raw`.
+- `--mean`, `--std` — horizontal mean / ±std reference lines.
+- `--csv PATH` — write the resolved windowed data (x + y columns).
+- plus the [shared style options](#️-shared-style-options).
+
+**Example** — RMSD with a 5 ns rolling window, an equilibration marker at 50 ns,
+full trajectory shown with the pre-equilibration region shaded:
 
 ```bash
-gmxplot plot energy.xvg --all-cols -o energy.png
-gmxplot plot rmsd.xvg --start 100 --t-eq 100 --roll-window 1.0 -o rmsd.png
-gmxplot plot hbond_dist.xvg --no-roll -o hbdist.png   # histogram, no smoothing
+gmxplot plot examples/data/rmsd_r1.xvg \
+  --roll-window 5 --t-eq 50 --plot-full --mean \
+  -o figs/plot_timeseries.png
 ```
 
-`--csv PATH` writes the **resolved windowed data** (x column + each selected y
-column, time-normalized, trimmed to `[start, end]`) as a wide CSV — the data the
-plot is drawn from, not statistics. For the statistical summary (SEM, block SEM,
-drift), use `gmxplot stats`.
+<img src="./figs/plot_timeseries.png" alt="Timeseries plot" width="620" />
 
-### `gmxplot compare FILE1 FILE2`
+### 🆚 `compare FILE1 FILE2` / `multi-compare FILES...`
 
-Overlay two files. Accepts the same dataset options (`--kind`, `--type`,
-`--x-col`, `--y-col`, `--all-cols`, `--start/--end`, `--time-unit`, smoothing).
-`--label1/--label2` set trace labels.
+Overlay two (`compare`) or three-plus (`multi-compare`) files. Accepts the same
+dataset options as `plot`; `--label1/--label2` (`compare`) or `--labels`
+(`multi-compare`) set trace labels. Colors cycle the default tab10 palette, or a
+custom one via `--palette`.
 
-### `gmxplot multi-compare FILES...`
+```bash
+gmxplot compare examples/data/rmsd_r1.xvg examples/data/rmsd_r2.xvg \
+  -l1 "Run 1" -l2 "Run 2" --roll-window 5 -o figs/compare.png
+```
 
-Overlay 3+ files with a cycling tab10 palette. `--labels` accepts a
-comma-separated or repeated list.
+<img src="./figs/compare.png" alt="Compare two runs" width="620" />
 
-### `gmxplot stats FILES...`
+### 🧬 `replicas FILES...`
 
-Write a statistics CSV. Key options: `--start/--end`, `--time-unit`,
-`--block-size N` or `--block-time T`, `--flat-threshold F`, `--ignore-series REGEX`
-(repeatable), `-o/--out`.
+Aggregate 2+ replicas into faint per-replica lines + a mean with an SD/SEM band.
 
-### `gmxplot replicas FILES...`
+**Key options**
 
-Aggregate 2+ replicas. Options: `--labels`, `--align {union,first,intersection}`,
-`--band {sd,sem,none}`, `--min-replicas`, `--csv`, `--summary-csv`, plus the
-usual window/smoothing/style options.
+- `--labels` — comma-separated or repeated labels.
+- `--align {union,first,intersection}` — x-axis alignment (default `union`).
+- `--band {sd,sem,none}` — band type (default `sd`).
+- `--min-replicas N` — suppress the mean where fewer than N replicas overlap
+  (default 2).
+- `--csv` — long-format tidy CSV (`x, series, replica, value`).
+- `--summary-csv` — per-replica window statistics + cross-replica mean±SD.
 
-### `gmxplot dashboard MANIFEST`
+```bash
+gmxplot replicas examples/data/rmsd_r1.xvg \
+  examples/data/rmsd_r2.xvg examples/data/rmsd_r3.xvg \
+  --labels r1,r2,r3 --band sd --roll-window 5 -o figs/replicas.png
+```
 
-Render a JSON manifest. Options: `-o`, `--dpi`, `--figsize`, `--cols`,
-`--sharex/--no-sharex`, `--strict`, `--stats-csv`, `--latex/--no-latex`.
+<img src="./figs/replicas.png" alt="Replica mean ± SD band" width="620" />
 
-### `gmxplot batch INPUT_DIR`
+### 📊 `stats FILES...`
 
-Plot every XVG in a directory. Options: `-o/--output-dir`, `--recursive`,
-`--pattern` (default `*.xvg`), `--skip-errors`, `--roll-avg`, `--dpi`, `--ext`,
-`--stats/--no-stats`, `--stats-file`.
+Write a statistics CSV (also printed as a Rich table).
+
+**Key options**
+
+- `--start/--end`, `--time-unit` — the analysis window.
+- `--block-size N` or `--block-time T` — block-averaging size.
+- `--flat-threshold F` — drift flag threshold (default 2.0).
+- `--ignore-series REGEX` (repeatable) — skip matching series (e.g. `RgX|RgY|RgZ`).
+- `-o/--out` — output CSV path.
+
+```bash
+gmxplot stats examples/data/rmsd_r1.xvg --start 50 --block-time 5
+```
+
+See [Statistics](#-statistics) for the exact columns and definitions.
+
+### 🧩 `dashboard MANIFEST`
+
+Render a multi-panel figure from a JSON manifest. See the full
+[manifest schema](#-dashboard-manifest).
+
+```bash
+gmxplot dashboard examples/dashboard.json -o figs/dashboard.png
+```
+
+**Key options**: `-o`, `--dpi`, `--figsize`, `--cols`, `--sharex/--no-sharex`,
+`--strict`, `--stats-csv`, `--latex/--no-latex`.
+
+### 📁 `batch INPUT_DIR`
+
+Plot every XVG in a directory using the full `plot` pipeline.
+
+**Key options**: `-o/--output-dir`, `--recursive`, `--pattern` (default `*.xvg`),
+`--skip-errors`, `--roll-avg`, `--dpi`, `--ext`, `--stats/--no-stats`,
+`--stats-file`, `--mean`, `--std`.
 
 With `--recursive`, the relative directory structure under `INPUT_DIR` is
 preserved in the output directory (so `sub/a.xvg` → `<out>/sub/a_plot.png`),
 avoiding stem collisions across subdirectories.
 
-### Shared style options
-
-`--figsize "W H"`, `--title`, `--xlabel`, `--ylabel`, `--xlim "MIN MAX"`,
-`--ylim "MIN MAX"`, `--xlog/--no-xlog`, `--ylog/--no-ylog`, `--grid/--no-grid`,
-`--legend/--no-legend`, `--legend-loc`, `--cmap`, `--palette`, `--line-width`,
-`--raw-alpha`, `--hline` (repeatable), `--vline` (repeatable), `--dpi`,
-`--latex/--no-latex`.
-
-`--palette` sets the multi-series line colors (used by `compare`/`multi-compare`
-and multi-column `xy`). It accepts a comma-separated color list (cycled as
-needed), a matplotlib colormap name, or a seaborn palette name; default is the
-tab10 `MULTI_COLORS` cycle. `--cmap` remains the colormap for PCA hexbins only.
+```bash
+gmxplot batch examples/data -o figs/batch --recursive --no-stats
+```
 
 ---
 
-## Time Axis & Windowing
+## 🎨 Plot Kinds
+
+Each kind gets its own primitive. Sample figures below were rendered from the
+synthetic data in `examples/data/`.
+
+**`timeseries`** — ordered time series; raw (faint) + rolling average, mean/±std
+lines, `t_eq` marker, window shading.
+
+**`profile`** — per-residue / per-atom line (RMSF, per-residue SASA). No smoothing.
+
+```bash
+gmxplot plot examples/data/rmsf.xvg -o figs/plot_profile.png
+```
+
+<img src="./figs/plot_profile.png" alt="Per-residue profile" width="620" />
+
+**`histogram`** — bin coordinate + counts as a step plot. No rolling; weighted
+x-statistics only.
+
+```bash
+gmxplot plot examples/data/hbond_dist.xvg -o figs/plot_histogram.png
+```
+
+<img src="./figs/plot_histogram.png" alt="Distance histogram" width="620" />
+
+**`spectrum`** — eigenvalue / index vs intensity. No smoothing; `--ylog` is handy.
+
+```bash
+gmxplot plot examples/data/eigenvalue.xvg --ylog -o figs/plot_spectrum.png
+```
+
+<img src="./figs/plot_spectrum.png" alt="Eigenvalue spectrum" width="620" />
+
+**`bar`** — discrete categories / cluster sizes.
+
+```bash
+gmxplot plot examples/data/cluster_size.xvg -o figs/plot_bar.png
+```
+
+<img src="./figs/plot_bar.png" alt="Cluster size bars" width="620" />
+
+**`pca`** — PC1–PC2 projection as a hexbin density (or `--kind scatter`).
+
+```bash
+gmxplot plot examples/data/proj2d.xvg -o figs/plot_pca.png
+```
+
+<img src="./figs/plot_pca.png" alt="PCA projection hexbin" width="620" />
+
+---
+
+## 🕐 Time Axis & Windowing
 
 - The x axis is detected as time when its label contains `Time (...)` or the
   family is a time-series family. `--time-unit auto` converts to ns via
@@ -197,16 +384,18 @@ tab10 `MULTI_COLORS` cycle. `--cmap` remains the colormap for PCA hexbins only.
 
 ---
 
-## Smoothing
+## 🌊 Smoothing
 
 Only `timeseries` is smoothed. Window resolution order:
+
 `--no-roll` > `--roll-samples` > `--roll-window` > `--roll-fraction` > auto.
+
 The default is 1% of the x-span; `--roll-window` is converted to samples via the
 median Δx. Samples are clamped to `[3, min(100, n//2)]`.
 
 ---
 
-## Statistics Definitions
+## 📊 Statistics
 
 For a `timeseries` (NaN dropped pairwise):
 
@@ -229,7 +418,7 @@ For a `timeseries` (NaN dropped pairwise):
 
 ---
 
-## Replica Aggregation
+## 🧬 Replica Aggregation
 
 - Each replica is time-normalized and windowed independently.
 - `--align union` (default) uses the union of x points; `first` uses the first
@@ -243,7 +432,7 @@ For a `timeseries` (NaN dropped pairwise):
 
 ---
 
-## Dashboard Manifest
+## 🧩 Dashboard Manifest
 
 ```json
 {
@@ -271,16 +460,67 @@ For a `timeseries` (NaN dropped pairwise):
   are drawn automatically; `sharex` applies only when every panel is a time axis.
 - Unknown keys warn by default and error under `--strict`.
 
+A complete, runnable example lives in
+[`examples/dashboard.json`](examples/dashboard.json).
+
 ---
 
-## Architecture
+## 🎛️ Shared Style Options
+
+Every plotting command shares one style parameter set:
+
+| option | default | description |
+|---|---|---|
+| `--figsize "W H"` | `10 6` | figure size in inches |
+| `--title` | (file title) | plot title |
+| `--xlabel` / `--ylabel` | (axis label) | override axis labels |
+| `--xlim "MIN MAX"` / `--ylim "MIN MAX"` | auto | axis limits |
+| `--xlog/--no-xlog` | off | log x axis |
+| `--ylog/--no-ylog` | off | log y axis |
+| `--grid/--no-grid` | on | grid lines |
+| `--legend/--no-legend` | on | show legend |
+| `--legend-loc` | `best` | legend location |
+| `--cmap` | `viridis` | colormap for PCA hexbins |
+| `--palette` | tab10 | multi-series line colors (see below) |
+| `--line-width` | `1.5` | smoothed / main line width |
+| `--raw-alpha` | `0.5` | raw line opacity |
+| `--hline` (repeatable) | — | horizontal reference line |
+| `--vline` (repeatable) | — | vertical reference line |
+| `--dpi` | `300` | output resolution |
+| `--latex/--no-latex` | off | LaTeX text rendering |
+
+**`--palette`** sets the multi-series line colors (used by `compare`,
+`multi-compare`, and multi-column `xy`). It accepts:
+
+- a comma-separated color list, cycled as needed — `--palette '#1f77b4,#d62728,green'`;
+- a matplotlib colormap name — `--palette tab10`;
+- a seaborn palette name — `--palette colorblind`.
+
+---
+
+## 🔁 Reproduce the Examples
+
+All figures in this README are generated from synthetic data shipped in the repo:
+
+```bash
+python examples/generate_data.py     # (re)write examples/data/*.xvg
+bash   examples/make_figures.sh      # render figs/*.png  (requires gmxplot)
+```
+
+The synthetic files carry genuine GROMACS-style headers, so they exercise the
+full auto-detection path — including the kinds (histogram, spectrum, bar, pca)
+that must *not* be smoothed.
+
+---
+
+## 🏗️ Architecture
 
 ```
 gmxplot/
 ├── cli.py          # Typer CLI: 8 commands, lazy matplotlib backend
 ├── parser.py       # XVG parsing, family/kind detection, column naming, time unit
 ├── dataset.py      # Dataset/DatasetOptions: columns, time, window, rolling
-├── plotting.py     # per-kind primitives + StyleOptions
+├── plotting.py     # per-kind primitives + StyleOptions + palette
 ├── comparison.py   # multi-dataset overlay
 ├── replicas.py     # alignment + mean±SD band + CSV export
 ├── dashboard.py    # JSON manifest → multi-panel figure
@@ -296,6 +536,6 @@ normalize time, apply window, resolve rolling) → `plotting.plot_dataset` /
 
 ---
 
-## License
+## 📄 License
 
 GPL-3.0 — see [LICENSE](LICENSE).

@@ -1,0 +1,19 @@
+# This file was created by gmxplot examples (synthetic data)
+@ title "Cluster size distribution"
+@ xaxis label "Cluster size"
+@ yaxis label "Number of clusters"
+1 42
+2 18
+3 9
+4 6
+5 4
+6 3
+7 2
+8 2
+9 1
+10 1
+11 1
+12 1
+13 1
+14 1
+15 1
