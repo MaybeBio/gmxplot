@@ -106,6 +106,12 @@ average and drift statistics. Nothing is smoothed by accident.
 ## 📦 Installation
 
 ```bash
+pip install gmxplot
+```
+
+or
+
+```bash
 git clone https://github.com/MaybeBio/gmxplot.git
 cd gmxplot
 pip install -e .
