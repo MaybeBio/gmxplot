@@ -1,3 +1,3 @@
-"""gmxplot - GROMACS XVG file visualization tool."""
+"""gmxplot - GROMACS XVG file visualization and statistics tool."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

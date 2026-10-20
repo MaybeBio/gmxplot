@@ -1,29 +1,38 @@
-# 🎨 gmxplot — GROMACS XVG File Visualization Tool
+# gmxplot — GROMACS XVG File Visualization & Statistics Tool
 
-**Auto-detect, plot, compare, and summarize your GROMACS simulation data from the command line.**
+**Auto-detect, plot, compare, aggregate, and summarize GROMACS XVG output from the command line.**
 
-`gmxplot` is a Python CLI tool that reads GROMACS XVG output files, automatically detects the type of simulation data (RMSD, RMSF, energy, SASA, PCA, gyration, etc.), and generates publication-ready matplotlib figures. It supports single-file plotting, two-file comparison, multi-file overlay, batch directory processing, and CSV statistical summaries — all with sensible defaults and no manual type specification required.
+`gmxplot` reads GROMACS XVG files, classifies each one by *what the data is*
+(`family`) and *how it should be rendered and analyzed* (`kind`), then produces
+publication-ready matplotlib figures and rigorous statistics. It normalizes
+physical time axes, applies configurable windows and smoothing, aggregates
+independent replicas into a mean±band figure, and assembles heterogeneous XVG
+files into a single dashboard from a JSON manifest.
 
 ---
 
 ## Features
 
-- **Automatic type detection** — No need to specify the plot type. `gmxplot` reads the XVG file headers and classifies the data as energy, RMSD, RMSF, gyration, SASA, PCA, or generic XY.
-- **Publication-ready plots** — Clean matplotlib + seaborn-styled figures with consistent color schemes and typography.
-- **Rolling average overlay** — Raw data shown with transparency; a rolling average line (auto-calculated at 5% of data range) highlights the trend.
-- **Two-file comparison** — Overlay two simulations (e.g., different mutants, temperatures, force fields) on the same axes with distinct colors.
-- **Multi-file comparison** — Compare 3+ files simultaneously with a cycling color palette (matplotlib tab10).
-- **Batch processing** — Automatically find and plot all XVG files in a directory.
-- **Statistical summaries** — Per-column CSV output with mean, std, min, q10, q50, q90, max, displayed as a Rich console table.
-- **GROMACS escape code rendering** — Automatic conversion of xmgrace formatting codes (`\S2\N` → `$^{2}$`, `\sX\N` → `$_{X}$`, `\f{...}` removed).
-- **Metadata-driven axis labels** — Axis titles are read from the XVG file headers, so units (ps vs ns, nm vs Å) always match the data.
+- **Two-level classification** — `family` (energy, rmsd, hbond_dist, …) is
+  decoupled from `kind` (timeseries, histogram, spectrum, bar, profile, pca,
+  scatter, xy). Rolling averages and drift statistics apply *only* to
+  `timeseries`, never to histograms, eigenvalue spectra, or cluster-size bars.
+- **Physical time axes** — `Time (ps|ns|us|fs)` is detected and normalized to ns;
+  `--start/--end/--t-eq` and `--roll-window` are expressed in physical units.
+- **Configurable windows** — statistics are computed on a `[start, end]` window;
+  `--plot-full` shows the full trajectory with the out-of-window region shaded.
+- **Rigorous statistics** — naive and block-averaged SEM, half-window drift test,
+  count-weighted histogram statistics, and correct PCA (both PCs analyzed).
+- **Replica aggregation** — faint per-replica lines + mean with a SD/SEM band,
+  with union/first/intersection alignment and long/summary CSV export.
+- **JSON dashboard** — assemble any mix of single-file and replica panels into one
+  figure with shared time axes, `t_eq` lines, and panel labels.
+- **GROMACS escape codes** — xmgrace `\S`, `\s`, `\f{}` converted to mathtext.
 - **Multiple output formats** — PNG (default), PDF, SVG, EPS, JPG, TIFF.
 
 ---
 
 ## Installation
-
-### From source
 
 ```bash
 git clone https://github.com/MaybeBio/gmxplot.git
@@ -31,262 +40,236 @@ cd gmxplot
 pip install -e .
 ```
 
-### With pip
-
-```bash
-pip install gmxplot
-```
-
-### Dependencies
-
-- Python ≥ 3.10
-- numpy, pandas, matplotlib, seaborn, typer, rich
+Requirements: Python ≥ 3.10, numpy, pandas, matplotlib, seaborn, typer, rich.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Detect the type of an XVG file
-gmxplot detect simulation.xvg
+# Inspect how a file is classified
+gmxplot detect rmsd.xvg
 
-# Plot a single file (auto-detects type)
-gmxplot plot simulation.xvg
+# Plot with automatic detection, 1 ns rolling window
+gmxplot plot rmsd.xvg -o rmsd.png --roll-window 1.0
 
-# Plot with custom rolling average
-gmxplot plot energy.xvg --roll-avg 50
+# Statistics on the equilibrated segment, 10 ps blocks
+gmxplot stats rmsd.xvg --start 100 --end 200 --block-time 0.01
 
-# Save to a specific file
-gmxplot plot rmsd.xvg -o rmsd.png
-gmxplot plot rmsd.xvg -o rmsd.pdf
+# Compare two runs
+gmxplot compare rep1/rmsd.xvg rep2/rmsd.xvg -l1 WT -l2 Mutant
 
-# Compare two simulations
-gmxplot compare ref.xvg mutant.xvg --label1 WildType --label2 Mutant
+# Aggregate three replicas into a mean±SD band
+gmxplot replicas rep1/rmsd.xvg rep2/rmsd.xvg rep3/rmsd.xvg \
+  --labels r1,r2,r3 --band sd --summary-csv rmsd_summary.csv
 
-# Compare 3+ files
-gmxplot multi-compare run1/rmsd.xvg run2/rmsd.xvg run3/rmsd.xvg
-
-# Batch process a directory
-gmxplot batch ./simulation/ -o ./plots/ --stats
-
-# Generate statistics CSV
-gmxplot stats energy.xvg rmsd.xvg -o summary.csv
+# Render a dashboard from a manifest
+gmxplot dashboard manifest.json -o overview.pdf --stats-csv panel_stats.csv
 ```
+
+---
+
+## Concepts: `family` vs `kind`
+
+- **`family`** — the *semantic content* of the file:
+  `energy`, `rmsd`, `rmsf`, `gyration`, `sasa`, `pca`, `hbond_num`,
+  `hbond_dist`, `mindist`, `contacts`, `eigenvalue`, `cluster_size`, `dssp`,
+  `generic`, `unknown`.
+- **`kind`** — the *rendering / statistics semantics*:
+
+  | kind | meaning | smoothing | drift |
+  |------|---------|-----------|-------|
+  | `timeseries` | ordered time series | yes | yes |
+  | `profile` | per-residue / per-atom profile | no | no |
+  | `histogram` | bin coordinate + counts | no | no (weighted x-stats) |
+  | `spectrum` | eigenvalue / index vs intensity | no | no |
+  | `bar` | discrete categories / cluster sizes | no | no |
+  | `pca` | PC1–PC2 scatter / hexbin | no | no |
+  | `scatter` | unordered x–y scatter | no | no |
+  | `xy` | ordered non-time line | no | no |
+
+- **Smoothing** is only offered to `timeseries`; requesting it on another kind is
+  silently ignored (those kinds never smooth).
+
+`--type` overrides `family`; `--kind` overrides `kind`. Precedence:
+`--kind` > kind implied by `--type` > automatic detection. Both appear in
+`gmxplot detect`.
 
 ---
 
 ## CLI Reference
 
-### `gmxplot plot`
+### `gmxplot detect FILE`
 
-Plot a single XVG file with automatic type detection.
+Print the resolved family, kind, columns, time unit, and primary y columns.
 
 ```
-Usage: gmxplot plot [OPTIONS] FILE
-
-Arguments:
-  FILE  Path to XVG file  [required]
-
-Options:
-  -r, --roll-avg INTEGER  Rolling average window size (auto if not set)
-  -o, --output TEXT       Output file path (PNG, PDF, SVG, JPG)
-  -d, --dpi INTEGER       DPI for saved image  [default: 300]
-  --show                  Display plot in window
-  -m, --mean              Plot mean line
-  -s, --std               Plot mean +/- std lines
-  --latex / --no-latex    Enable/disable LaTeX rendering (default: off)
-  --help                  Show this message and exit
+gmxplot detect rmsd.xvg
+  Family: rmsd
+  Kind:   timeseries
+  X column: Time     X is time: True    Time unit: ns
+  Y columns: RMSD
 ```
 
-**Examples:**
+### `gmxplot plot FILE`
+
+Key options: `--kind`, `--type`, `--x-col`, `--y-col` (repeatable), `--all-cols`,
+`--start`, `--end`, `--t-eq`, `--plot-full`, `--time-unit {auto,ps,ns,us,fs}`,
+`--no-time-normalize`, `--roll-samples N` / `--roll-avg N` / `--roll-window T` /
+`--roll-fraction F`, `--no-roll`, `--no-raw`, `--mean`, `--std`, `--csv`, and the
+shared style options below.
+
 ```bash
-gmxplot plot energy.xvg
-gmxplot plot rmsd.xvg -o rmsd.png --roll-avg 20
-gmxplot plot sasa.xvg -o sasa.pdf --dpi 600
-gmxplot plot gyrate.xvg -m -s   # with mean and std lines
+gmxplot plot energy.xvg --all-cols -o energy.png
+gmxplot plot rmsd.xvg --start 100 --t-eq 100 --roll-window 1.0 -o rmsd.png
+gmxplot plot hbond_dist.xvg --no-roll -o hbdist.png   # histogram, no smoothing
 ```
 
-### `gmxplot compare`
+`--csv PATH` writes the **resolved windowed data** (x column + each selected y
+column, time-normalized, trimmed to `[start, end]`) as a wide CSV — the data the
+plot is drawn from, not statistics. For the statistical summary (SEM, block SEM,
+drift), use `gmxplot stats`.
 
-Compare two XVG files side-by-side or overlaid on the same axes.
+### `gmxplot compare FILE1 FILE2`
 
-```
-Usage: gmxplot compare [OPTIONS] FILE1 FILE2
+Overlay two files. Accepts the same dataset options (`--kind`, `--type`,
+`--x-col`, `--y-col`, `--all-cols`, `--start/--end`, `--time-unit`, smoothing).
+`--label1/--label2` set trace labels.
 
-Arguments:
-  FILE1  Path to first XVG file  [required]
-  FILE2  Path to second XVG file  [required]
+### `gmxplot multi-compare FILES...`
 
-Options:
-  -l1, --label1 TEXT      Label for first dataset  [default: prot_1]
-  -l2, --label2 TEXT      Label for second dataset  [default: prot_2]
-  -r, --roll-avg INTEGER  Rolling average window size  [default: 50]
-  -o, --output TEXT       Output file path
-  -d, --dpi INTEGER       DPI for saved image  [default: 300]
-  --latex / --no-latex    Enable/disable LaTeX rendering (default: off)
-  --help                  Show this message and exit
-```
+Overlay 3+ files with a cycling tab10 palette. `--labels` accepts a
+comma-separated or repeated list.
 
-**Type-specific behavior:**
-| Plot Type | Comparison Mode |
-|-----------|----------------|
-| energy | Multi-panel grid: one subplot per component, both datasets overlaid per panel |
-| rmsd | Single axes: both RMSD rolling averages overlaid |
-| rmsf | Single axes: both RMSF traces overlaid (no rolling average) |
-| gyration | Single axes: both Rg traces overlaid |
-| sasa | Single axes: both SASA rolling averages overlaid |
-| pca | Side-by-side: two hexbin density plots |
-| xy | Single axes: generic overlay of both files |
+### `gmxplot stats FILES...`
 
-**Examples:**
-```bash
-gmxplot compare prot1/rmsd.xvg prot2/rmsd.xvg -l1 WT -l2 Mutant
-gmxplot compare run1/energy.xvg run2/energy.xvg -o energy_compare.png
-```
+Write a statistics CSV. Key options: `--start/--end`, `--time-unit`,
+`--block-size N` or `--block-time T`, `--flat-threshold F`, `--ignore-series REGEX`
+(repeatable), `-o/--out`.
 
-### `gmxplot multi-compare`
+### `gmxplot replicas FILES...`
 
-Compare multiple XVG files (3+) of the same type.
+Aggregate 2+ replicas. Options: `--labels`, `--align {union,first,intersection}`,
+`--band {sd,sem,none}`, `--min-replicas`, `--csv`, `--summary-csv`, plus the
+usual window/smoothing/style options.
 
-```
-Usage: gmxplot multi-compare [OPTIONS] FILES...
+### `gmxplot dashboard MANIFEST`
 
-Arguments:
-  FILES...  Paths to XVG files (at least 2)  [required]
+Render a JSON manifest. Options: `-o`, `--dpi`, `--figsize`, `--cols`,
+`--sharex/--no-sharex`, `--strict`, `--stats-csv`, `--latex/--no-latex`.
 
-Options:
-  -r, --roll-avg INTEGER  Rolling average window size  [default: 50]
-  -o, --output TEXT       Output file path
-  -d, --dpi INTEGER       DPI for saved image  [default: 300]
-  --latex / --no-latex    Enable/disable LaTeX rendering (default: off)
-  --help                  Show this message and exit
-```
+### `gmxplot batch INPUT_DIR`
 
-Uses matplotlib's tab10 color palette (10 cycled colors) for distinguishing traces.
+Plot every XVG in a directory. Options: `-o/--output-dir`, `--recursive`,
+`--pattern` (default `*.xvg`), `--skip-errors`, `--roll-avg`, `--dpi`, `--ext`,
+`--stats/--no-stats`, `--stats-file`.
 
-**Examples:**
-```bash
-gmxplot multi-compare chA/rmsd.xvg chB/rmsd.xvg chC/rmsd.xvg
-gmxplot multi-compare prot3/rmsf_ch*.xvg -o rmsf_multi.png
-```
+With `--recursive`, the relative directory structure under `INPUT_DIR` is
+preserved in the output directory (so `sub/a.xvg` → `<out>/sub/a_plot.png`),
+avoiding stem collisions across subdirectories.
 
-### `gmxplot detect`
+### Shared style options
 
-Print the detected plot type and metadata for an XVG file without generating a plot.
+`--figsize "W H"`, `--title`, `--xlabel`, `--ylabel`, `--xlim "MIN MAX"`,
+`--ylim "MIN MAX"`, `--xlog/--no-xlog`, `--ylog/--no-ylog`, `--grid/--no-grid`,
+`--legend/--no-legend`, `--legend-loc`, `--cmap`, `--palette`, `--line-width`,
+`--raw-alpha`, `--hline` (repeatable), `--vline` (repeatable), `--dpi`,
+`--latex/--no-latex`.
 
-```
-Usage: gmxplot detect [OPTIONS] FILE
-
-Arguments:
-  FILE  Path to XVG file  [required]
-
-Options:
-  --help  Show this message and exit
-```
-
-**Example output:**
-```
-File: tests/fixtures/prot1/energy.xvg
-  Type: energy
-  Title: GROMACS Energies
-  X-axis: Time (ps)
-  Y-axis: (kJ/mol), (K), (bar), (kg/m^3)
-  Columns: ['Time', 'Potential', 'Temperature', 'Pressure', 'Density']
-  Data points: 20001
-  Columns count: 5
-```
-
-### `gmxplot batch`
-
-Process all XVG files in a directory, generating plots and optionally a statistics CSV.
-
-```
-Usage: gmxplot batch [OPTIONS] [INPUT_DIR]
-
-Arguments:
-  [INPUT_DIR]  Input directory with XVG files  [default: .]
-
-Options:
-  -o, --output-dir TEXT       Output directory for plots  [default: .]
-  -r, --roll-avg INTEGER      Rolling average window size (auto if not set)
-  -d, --dpi INTEGER           DPI for saved images  [default: 300]
-  -e, --ext TEXT              Export format (png, pdf, svg, jpg)  [default: png]
-  --stats / --no-stats        Generate statistics CSV  [default: True]
-  --stats-file TEXT           Statistics CSV filename  [default: xvg-stats.csv]
-  -m, --mean                  Plot mean lines
-  -s, --std                   Plot mean +/- std lines
-  --latex / --no-latex        Enable/disable LaTeX rendering (default: off)
-  --help                      Show this message and exit
-```
-
-**Examples:**
-```bash
-gmxplot batch ./simulation/ -o ./plots/
-gmxplot batch ./data/ -o ./output/ --stats --ext pdf
-gmxplot batch ./runs/ --no-stats -m    # batch without stats, with mean lines
-```
-
-### `gmxplot stats`
-
-Generate a statistical summary CSV for one or more XVG files, displayed as a Rich table.
-
-```
-Usage: gmxplot stats [OPTIONS] FILES...
-
-Arguments:
-  FILES...  XVG files to analyze  [required]
-
-Options:
-  -o, --output TEXT  Output CSV path  [default: xvg-stats.csv]
-  --help             Show this message and exit
-```
-
-Per-column statistics computed:
-| Field | Description |
-|-------|-------------|
-| dir | Parent directory of the file |
-| file | XVG filename |
-| plot | Column name (e.g., Potential, RMSD, Rg) |
-| mean | Arithmetic mean |
-| std | Standard deviation |
-| min | Minimum value |
-| q10 | 10th percentile |
-| q50 | 50th percentile (median) |
-| q90 | 90th percentile |
-| max | Maximum value |
-
-**Example output:**
-```
- XVG Statistics Summary
-┏━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━┓
-┃ File   ┃ Plot     ┃  Mean ┃   Std ┃    Min ┃    Q10 ┃   Q50 ┃    Q90 ┃    Max ┃
-┡━━━━━━━━╇━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━┩
-│ rmsd…  │ RMSD     │ 0.2905│ 0.0323│ 0.0369 │ 0.2544 │ 0.2868│ 0.3324 │ 0.3977 │
-│ energ… │ Potenti… │-5616.…│1095.5…│-5659.39│-5639.27│-5616…│-5601.2…│-5570.…│
-└────────┴──────────┴───────┴───────┴────────┴────────┴───────┴────────┴────────┘
-```
+`--palette` sets the multi-series line colors (used by `compare`/`multi-compare`
+and multi-column `xy`). It accepts a comma-separated color list (cycled as
+needed), a matplotlib colormap name, or a seaborn palette name; default is the
+tab10 `MULTI_COLORS` cycle. `--cmap` remains the colormap for PCA hexbins only.
 
 ---
 
-## Plot Type Detection
+## Time Axis & Windowing
 
-Plot type is detected automatically from the `@ title "..."` header line in each XVG file, with fallback heuristics based on axis labels and column count when the title is unrecognized.
+- The x axis is detected as time when its label contains `Time (...)` or the
+  family is a time-series family. `--time-unit auto` converts to ns via
+  `ps→1e-3`, `ns→1`, `us→1e3`, `fs→1e-6`; `--no-time-normalize` keeps the
+  original unit.
+- `--start`/`--end` trim **both** the plot and the statistics window.
+- `--plot-full` keeps the full trajectory on the plot and shades the region
+  outside the window; statistics still use `[start, end]`.
+- `--t-eq` draws a vertical line; without an explicit `--start`, the statistics
+  window starts at `t_eq` (plot full, analyze `[t_eq, end]`).
 
-| Plot Type | `@ title` pattern | Column Names | Special Features |
-|-----------|-------------------|--------------|------------------|
-| `energy` | "GROMACS Energies", "Energy", ... | Time, Potential, Temperature, Pressure, Density | Multi-panel grid (2-column), per-component subplots |
-| `gyration` | "Radius of gyration ..." | Time, Rg, RgX, RgY, RgZ | Rg rolling average only (components not shown) |
-| `rmsd` | "RMSD" | Time, RMSD | Rolling average overlay |
-| `rmsf` | "RMS fluctuation", "RMSF" | Residue, RMSF | Per-residue line (no rolling average) |
-| `sasa` | "Solvent Accessible Surface", "Area per residue ..." | Time/Residue, Area, StdDev | Time-series (with RA) or per-residue (without RA) |
-| `pca` | "2D projection of trajectory" | PC1, PC2 | Hexbin density with viridis colormap + colorbar |
-| `xy` | Any unrecognized title | Auto-detected | Generic fallback, legend-based line labels |
+---
 
-### Detection priority
+## Smoothing
 
-1. **Title match** (fast, authoritative) — if `@ title` contains a known keyword, use that type
-2. **Axis label / column count fallback** — when the title doesn't match, heuristics examine the y-label for units, column count, and axis names
-3. **Default** — 2+ columns → `xy`, otherwise `unknown`
+Only `timeseries` is smoothed. Window resolution order:
+`--no-roll` > `--roll-samples` > `--roll-window` > `--roll-fraction` > auto.
+The default is 1% of the x-span; `--roll-window` is converted to samples via the
+median Δx. Samples are clamped to `[3, min(100, n//2)]`.
+
+---
+
+## Statistics Definitions
+
+For a `timeseries` (NaN dropped pairwise):
+
+- `n`, `mean`, `sd` (ddof=1), `sem = sd/√n`
+- `block_size` (default `round(n**(1/3))`, override with `--block-size/--block-time`),
+  `n_blocks = floor(n/block_size)`, `sem_block = SD(block means)/√n_blocks`
+- `sem_used = max(sem, sem_block)`
+- `mean_first_half` / `mean_second_half` split at the window midpoint
+- `drift = mean_second − mean_first`
+- `drift_over_sem = |drift| / √(sem1_used² + sem2_used²)` (plus a naive ratio)
+- `flag = flat` if `drift_over_sem ≤ --flat-threshold` (default 2), else `DRIFT`
+- `min/q10/q50/q90/max`
+
+`profile`/`spectrum`/`bar`/`xy`/`scatter` output descriptive statistics only.
+`histogram` adds count-weighted x statistics: `x_weighted_mean`,
+`x_weighted_sd`, `x_weighted_median`, `x_mode`, `n_eff = (Σw)²/Σw²`,
+`sem_weighted`. `pca` analyzes every PC column.
+
+`--ignore-series REGEX` skips matching series (e.g. `RgX|RgY|RgZ`).
+
+---
+
+## Replica Aggregation
+
+- Each replica is time-normalized and windowed independently.
+- `--align union` (default) uses the union of x points; `first` uses the first
+  file's grid; `intersection` uses shared points. Values are `np.interp`-ed
+  within each replica's support (NaN outside, no extrapolation).
+- Smoothing (if any) is applied per replica *before* aggregation; the summary CSV
+  always uses the raw windowed data.
+- `--band sd` (default) fills mean±SD, `sem` fills mean±SEM, `none` draws only
+  the mean. `--min-replicas` (default 2) suppresses the mean where too few
+  replicas overlap.
+
+---
+
+## Dashboard Manifest
+
+```json
+{
+  "title": "Equilibration overview",
+  "time_unit": "auto",
+  "start": 0, "end": 200, "t_eq": 100,
+  "cols": 2, "figsize": [14, 10], "sharex": true,
+  "panels": [
+    { "file": "rep1/rmsd.xvg", "title": "Backbone RMSD",
+      "kind": "timeseries", "y_col": "RMSD", "ylim": [0, 0.6] },
+    { "files": ["rep1/hbnum.xvg", "rep2/hbnum.xvg", "rep3/hbnum.xvg"],
+      "labels": ["r1", "r2", "r3"], "title": "Interface H-bonds", "band": "sd" }
+  ]
+}
+```
+
+- Global keys (`title`, `time_unit`, `start`, `end`, `t_eq`, `cols`, `figsize`,
+  `sharex`) are inherited by every panel and overridable per-panel.
+- A panel has either `file` (single) or `files` + `labels` (replica).
+- Panel keys: `kind`, `type`, `x_col`, `y_col`/`y_cols`, `all_cols`, `title`,
+  `xlabel`, `ylabel`, `ylog`, `ylim`, `xlim`, `hline`, `vline`, `start`, `end`,
+  `t_eq`, `roll_window`, `roll_samples`, `legend`, `band`, `align`, `min_replicas`.
+- Multi-column panels are expanded into one sub-plot per y column so each axis
+  carries a single self-consistent unit. `t_eq` lines and panel letters (A, B, C…)
+  are drawn automatically; `sharex` applies only when every panel is a time axis.
+- Unknown keys warn by default and error under `--strict`.
 
 ---
 
@@ -294,109 +277,25 @@ Plot type is detected automatically from the `@ title "..."` header line in each
 
 ```
 gmxplot/
-├── pyproject.toml          # Package config, dependencies, entry point
-├── README.md
-├── gmxplot/
-│   ├── __init__.py         # Package version
-│   ├── cli.py              # Typer CLI: all 6 commands, figure saving, LaTeX setup
-│   ├── parser.py           # XVG parsing: XVGMetadata, read_xvg(), classify_plot_type()
-│   ├── plotting.py         # Matplotlib figures: plot_energy, plot_rmsd, plot_rmsf, etc.
-│   ├── comparison.py       # Comparison: compare_two(), compare_multi(), type-specific funcs
-│   ├── stats.py            # Statistics: compute_column_stats(), generate_stats_csv()
-│   ├── escape_codes.py     # Escape codes: clean_gromacs_label(), resolve_axis_titles()
-│   └── config.py           # Defaults: figure sizes, DPI, colors, rolling avg params
-└── tests/
-    ├── test_parser.py
-    ├── test_plotting.py
-    ├── test_comparison.py
-    ├── test_stats.py
-    ├── test_escape_codes.py
-    ├── test_cli.py
-    └── fixtures/           # Sample XVG files for testing
-        ├── prot1/          # energy, gyrate, rmsd, rmsf, sasa, 2dproj
-        ├── prot2/          # Same types (for comparison testing)
-        ├── prot3/          # Chain-specific files (for multi-compare)
-        └── other_xvg/      # Edge cases (hbnum, resarea, cphmd)
+├── cli.py          # Typer CLI: 8 commands, lazy matplotlib backend
+├── parser.py       # XVG parsing, family/kind detection, column naming, time unit
+├── dataset.py      # Dataset/DatasetOptions: columns, time, window, rolling
+├── plotting.py     # per-kind primitives + StyleOptions
+├── comparison.py   # multi-dataset overlay
+├── replicas.py     # alignment + mean±SD band + CSV export
+├── dashboard.py    # JSON manifest → multi-panel figure
+├── stats.py        # SEM/block-SEM/drift/histogram-weighting + CSV
+├── escape_codes.py # xmgrace → mathtext
+└── config.py       # defaults (colors, rolling, block, thresholds)
 ```
 
-### Module relationships
-
-```
-cli.py  ──→  parser.py       (read_xvg, classify_plot_type)
-cli.py  ──→  plotting.py     (create_plot, calculate_roll_avg)
-cli.py  ──→  comparison.py   (compare_two, compare_multi)
-cli.py  ──→  stats.py        (generate_stats_csv, format_stats_table)
-
-plotting.py  ──→  escape_codes.py   (resolve_axis_titles, clean_gromacs_label)
-comparison.py ──→  escape_codes.py
-comparison.py ──→  plotting.py      (calculate_roll_avg, _parse_y_units)
-```
-
-### Data flow
-
-1. **Parsing**: XVG file → `read_xvg()` → `XVGMetadata` (title, labels, legend entries) + `DataFrame` (numeric columns with type-specific names)
-2. **Classification**: `classify_plot_type()` matches title against known patterns → sets `metadata.plot_type`
-3. **Plotting**: `create_plot()` dispatches to type-specific function → `Figure` with rolling average overlay
-4. **Output**: `plt.savefig()` → PNG/PDF/SVG on disk, or `plt.show()` for interactive viewing
-
----
-
-## Rolling Average
-
-The rolling average window size is calculated as **5% of the data range** (max - min along the x-axis), clamped between **3 and 100**. This provides a reasonable smoothing level for most GROMACS simulation data without over-smoothing.
-
-- **Single plot**: Auto-calculated by default; override with `--roll-avg N`
-- **Comparison**: Default 50 (larger window for trend-focused comparison)
-- **RMSF**: No rolling average (per-residue data is not a time series)
-
----
-
-## Color Schemes
-
-| Context | Colors | Source |
-|---------|--------|--------|
-| Single plot raw data | `#aec6cf` (pastel blue, 50% alpha) | config.py |
-| Single plot rolling avg | `#1f77b4` (tab10 blue) | config.py |
-| Two-file comparison | `#1f77b4` (blue) vs `#d62728` (red) | `COMPARE_COLORS` |
-| Multi-file comparison | tab10 10-color cycle | `MULTI_COLORS` |
-| PCA density | viridis colormap | matplotlib |
-
----
-
-## GROMACS Escape Code Handling
-
-GROMACS XVG files use xmgrace-style formatting codes for axis labels and legends. `gmxplot` converts these to matplotlib-compatible notation:
-
-| Escape Code | Meaning | Conversion | Example |
-|-------------|---------|------------|---------|
-| `\S...\N` | Superscript | `$^{...}$` | `nm\S2\N` → `nm$^{2}$` |
-| `\s...\N` | Subscript | `$_{...}$` | `Rg\sX\N` → `Rg$_{X}$` |
-| `\f{...}` | Font switch | Removed | `\f{Symbol}alpha` → `alpha` |
-
-Works with matplotlib's built-in mathtext renderer (no LaTeX installation required). If you enable `--latex`, the same notation is handled by LaTeX's math mode.
-
----
-
-## References
-
-`gmxplot` was inspired by and builds upon ideas from:
-
-- **[GMXvg](https://github.com/TheBiomics/GMXvg)** — Batch-oriented matplotlib plotting for GROMACS XVG files with statistical CSV export.
-- **[xvg_plot](https://github.com/TheBiomics/GMXvg)** — Interactive Plotly-based XVG visualization with rich type detection and multi-file comparison.
-
-Key differences from these tools:
-- **vs GMXvg**: No heavy UtilityLib dependency; cleaner modular architecture; type-specific plot functions with auto-detection; comparison and multi-file support.
-- **vs xvg_plot**: Uses matplotlib instead of Plotly for publication-ready static output; includes statistical summary CSV; uses typer instead of argparse for CLI; supports mean/std overlay lines.
+Data flow: `parser.read_xvg` → `dataset.prepare_dataset` (resolve family/kind,
+normalize time, apply window, resolve rolling) → `plotting.plot_dataset` /
+`comparison.compare_datasets` / `replicas.replica_plot` / `dashboard.render_dashboard`
+→ `stats.compute_dataset_stats`.
 
 ---
 
 ## License
 
-MIT
-
-## Todos
-
-⚠️ In Chinese
-
-- 1. 输出原始xvg数据
-- 2. 可视化其他需求
+GPL-3.0 — see [LICENSE](LICENSE).

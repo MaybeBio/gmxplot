@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
     { name = "Joe Hoye Dow", email = "luxunisgod123@gmail.com" }
 ]
-description = "GROMACS XVG file visualization tool with auto type detection, comparison, and statistical summary"
+description = "GROMACS XVG visualization and statistics with family/kind semantics, physical time axes, windows, replica aggregation, and dashboards"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0"
@@ -42,6 +42,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/MaybeBio/gmxplot"
 Issues = "https://github.com/MaybeBio/gmxplot/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 gmxplot = "gmxplot.cli:app"
