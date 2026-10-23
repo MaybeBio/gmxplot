@@ -73,3 +73,17 @@ def test_profile_no_drift_columns(tmp_xvg):
     rows = compute_dataset_stats(ds)
     assert np.isnan(rows[0]['drift_over_sem'])
     assert rows[0]['kind'] == 'profile'
+
+
+def test_generate_stats_csv_labels_each_file(tmp_xvg, tmp_path):
+    # A shared options object must not pin every row to the first file's name.
+    from gmxplot.stats import generate_stats_csv
+
+    p1 = tmp_xvg('a.xvg', 'Radius of gyration', 'Time (ns)', 'Rg (nm)',
+                 [[0, 1.0], [1, 2.0]], legends=['Rg'])
+    p2 = tmp_xvg('b.xvg', 'Radius of gyration', 'Time (ns)', 'Rg (nm)',
+                 [[0, 3.0], [1, 4.0]], legends=['Rg'])
+    out = str(tmp_path / 'stats.csv')
+    df = generate_stats_csv([p1, p2], out, opts=DatasetOptions())
+    assert df['file'].tolist() == ['a.xvg', 'b.xvg']
+    assert np.isclose(df['mean'].tolist(), [1.5, 3.5]).all()

@@ -8,6 +8,7 @@ count-weighted x statistics; PCA analyzes every column (there is no x column).
 import math
 import os
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -243,11 +244,10 @@ def generate_stats_csv(
         df, meta = read_xvg(fp)
         if df.empty:
             continue
-        o = opts or DatasetOptions()
-        if not o.label:
-            o.label = os.path.basename(fp)
-        if not o.path:
-            o.path = fp
+        # Per-file copy: mutating a shared options object would pin every later
+        # row to the first file's label/path.
+        label = os.path.basename(fp)
+        o = replace(opts, label=label, path=fp) if opts else DatasetOptions(label=label, path=fp)
         ds = prepare_dataset(df, meta, o)
         bs = block_size
         if block_time is not None and bs is None and ds.x_col is not None:

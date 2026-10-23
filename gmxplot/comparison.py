@@ -57,15 +57,26 @@ def _compare_single(datasets: list, labels: list, style: StyleOptions) -> plt.Fi
     multi = len(ds0.y_cols) > 1
     colors = resolve_palette(style.palette, len(datasets))
     fig, ax = plt.subplots(figsize=style.figsize or FIGURE_SIZE_SINGLE)
-    for col in ds0.y_cols:
+    if not multi:
+        # One series per file: match by position, not by column name.  GROMACS
+        # names the legend after the selection, so files that differ only in the
+        # selection (ZF1-DNA, ZF2-DNA, ...) carry different column names and
+        # only the first file would be drawn.
         for i, ds in enumerate(datasets):
-            if col not in ds.y_cols:
+            if not ds.y_cols:
                 continue
-            color = colors[i]
-            label = labels[i] if labels else str(i)
-            if multi:
+            _overlay_line(ax, ds, ds.y_cols[0], colors[i],
+                          labels[i] if labels else str(i), style,
+                          _effective_roll(ds, None))
+    else:
+        for col in ds0.y_cols:
+            for i, ds in enumerate(datasets):
+                if col not in ds.y_cols:
+                    continue
+                color = colors[i]
+                label = labels[i] if labels else str(i)
                 label = f'{label} {col}'
-            _overlay_line(ax, ds, col, color, label, style, _effective_roll(ds, None))
+                _overlay_line(ax, ds, col, color, label, style, _effective_roll(ds, None))
     ax.set_xlabel(_x_title(ds0, style))
     ax.set_ylabel(style.ylabel or ds0.meta.y_label or '')
     ax.set_title(style.title or ds0.meta.title)
