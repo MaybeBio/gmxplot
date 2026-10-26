@@ -97,16 +97,47 @@ def _make_axes(n_panels: int, figsize: Optional[Tuple[float, float]] = None):
     return fig, axes_flat, n_cols
 
 
+# GROMACS writes ONE y-axis label for a whole multi-column file and merges
+# repeated units: energy.xvg has 6 columns but the label only lists five
+# "(...)" groups.  A purely positional assignment therefore shifts every unit
+# after the duplicate (Total Energy gets K, Temperature gets bar, ...), so fall
+# back to per-term units when the counts do not line up.
+_TERM_UNITS = [
+    (r'\bdensity\b', 'kg/m^3'),
+    (r'\bpressure\b|\bpres\.|\bvir-', 'bar'),
+    (r'\btemperature\b|^t-', 'K'),
+    (r'\bbox-[xyz]\b', 'nm'),
+    (r'\bvolume\b', 'nm^3'),
+    (r'\bpotential\b|\bkinetic\b|\btotal energy\b|\benthalpy\b|\bgibbs\b',
+     'kJ/mol'),
+    (r'\bcoul|\blj-|\bdisper|\bbond|\bangle\b|\bdihedral|\bimproper|\bvdw',
+     'kJ/mol'),
+]
+
+
+def _unit_for_column(col: str, units: List[str]) -> Optional[str]:
+    """Resolve a unit for one column when the file's unit list is incomplete."""
+    label = clean_gromacs_label(col).lower()
+    for pattern, unit in _TERM_UNITS:
+        if re.search(pattern, label):
+            return unit
+    # A single unit for the whole file applies to every column.
+    return units[0] if len(units) == 1 else None
+
+
 def _y_titles(ds: Dataset) -> dict:
     """Map each y column to a display label with units when available."""
-    units = re.findall(r'\(([^()]+)\)', ds.meta.y_label)
+    units = [clean_gromacs_label(u)
+             for u in re.findall(r'\(([^()]+)\)', ds.meta.y_label)]
     out = {}
-    for i, col in enumerate(ds.y_cols):
+    if units and len(units) == len(ds.y_cols):
+        for col, unit in zip(ds.y_cols, units):
+            out[col] = f'{clean_gromacs_label(col)} ({unit})'
+        return out
+    for col in ds.y_cols:
         base = clean_gromacs_label(col)
-        if i < len(units):
-            out[col] = f'{base} ({clean_gromacs_label(units[i])})'
-        else:
-            out[col] = base
+        unit = _unit_for_column(col, units)
+        out[col] = f'{base} ({unit})' if unit else base
     return out
 
 
